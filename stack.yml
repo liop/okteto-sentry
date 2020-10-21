@@ -1,0 +1,266 @@
+name: sentry
+services:
+  smtp:
+    image: tianon/exim4
+    volumes:
+      - '/var/spool/exim4'
+      - '/var/log/exim4'
+  memcached:
+    image: 'memcached:1.5-alpine'
+  redis:
+    image: 'redis:5.0-alpine'
+    volumes:
+      - '/data'
+    resources:
+      memory: 1Gi
+      storage: 1Gi
+  postgres:
+    image: 'postgres:9.6'
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD='trust'
+    volumes:
+      - '/var/lib/postgresql/data'
+  zookeeper:
+    image: 'confluentinc/cp-zookeeper:5.5.0'
+    environment:
+      - ZOOKEEPER_CLIENT_PORT='2181'
+      - CONFLUENT_SUPPORT_METRICS_ENABLE='false'
+      - ZOOKEEPER_LOG4J_ROOT_LOGLEVEL='WARN'
+      - ZOOKEEPER_TOOLS_LOG4J_LOGLEVEL='WARN'
+    volumes:
+      - '/var/lib/zookeeper/data'
+      - '/var/lib/zookeeper/log'
+      - '/etc/zookeeper/secrets'
+  kafka:
+    image: 'confluentinc/cp-kafka:5.5.0'
+    environment:
+      - KAFKA_ZOOKEEPER_CONNECT='zookeeper=181'
+      - KAFKA_ADVERTISED_LISTENERS- ='- PLAINTEXT=/kafka=092'
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR='1'
+      - KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS='1'
+      - KAFKA_LOG_RETENTION_HOURS='24'
+      - KAFKA_MESSAGE_MAX_BYTES='50000000' #50MB or bust
+      - KAFKA_MAX_REQUEST_SIZE='50000000' #50MB on requests apparently too
+      - CONFLUENT_SUPPORT_METRICS_ENABLE='false'
+      - KAFKA_LOG4J_LOGGERS='kafka.cluster=WARN,kafka.controller=WARN,kafka.coordinator=WARN,kafka.log=WARN,kafka.server=WARN,kafka.zookeeper=WARN,state.change.logger=WARN'
+      - KAFKA_LOG4J_ROOT_LOGLEVEL='WARN'
+      - KAFKA_TOOLS_LOG4J_LOGLEVEL='WARN'
+    volumes:
+      - '/var/lib/kafka/data'
+      - '/var/lib/kafka/log'
+      - '/etc/kafka/secrets'
+  # clickhouse:
+  #   image: 'yandex/clickhouse-server:20.3.9.70'
+  #   resources:
+  #     memory: 1Gi
+  #     storage: 1Gi
+  #   volumes:
+  #     - 'sentry-clickhouse:/var/lib/clickhouse'
+  #     - 'sentry-clickhouse-log:/var/log/clickhouse-server'
+  #     - type: bind
+  #       read_only: true
+  #       source: ./clickhouse/config.xml
+  #       target: /etc/clickhouse-server/config.d/sentry.xml
+  #   environment:
+  #     # This limits Clickhouse's memory to 30% of the host memory
+  #     # If you have high volume and your search return incomplete results
+  #     # You might want to change this to a higher value (and ensure your host has enough memory)
+  #     - MAX_MEMORY_USAGE_RATIO=0.3
+  # snuba-api:
+  #   image: '$SNUBA_IMAGE'
+  #   environment:
+  #     - SNUBA_SETTINGS=docker
+  #     - CLICKHOUSE_HOST=clickhouse
+  #     - DEFAULT_BROKERS='kafka:9092'
+  #     - REDIS_HOST=redis
+  #     - UWSGI_MAX_REQUESTS='10000'
+  #     - UWSGI_DISABLE_LOGGING='true'
+  # # Kafka consumer responsible for feeding events into Clickhouse
+  # snuba-consumer:
+  #   image: '$SNUBA_IMAGE'
+  #   environment:
+  #     - SNUBA_SETTINGS=docker
+  #     - CLICKHOUSE_HOST=clickhouse
+  #     - DEFAULT_BROKERS='kafka:9092'
+  #     - REDIS_HOST=redis
+  #     - UWSGI_MAX_REQUESTS='10000'
+  #     - UWSGI_DISABLE_LOGGING='true'
+  #   command: consumer --storage events --auto-offset-reset=latest --max-batch-time-ms 750
+  # # Kafka consumer responsible for feeding outcomes into Clickhouse
+  # # Use --auto-offset-reset=earliest to recover up to 7 days of TSDB data
+  # # since we did not do a proper migration
+  # snuba-outcomes-consumer:
+  #   image: '$SNUBA_IMAGE'
+  #   environment:
+  #     - SNUBA_SETTINGS=docker
+  #     - CLICKHOUSE_HOST=clickhouse
+  #     - DEFAULT_BROKERS='kafka:9092'
+  #     - REDIS_HOST=redis
+  #     - UWSGI_MAX_REQUESTS='10000'
+  #     - UWSGI_DISABLE_LOGGING='true'
+  #   command: consumer --storage outcomes_raw --auto-offset-reset=earliest --max-batch-time-ms 750
+  # # Kafka consumer responsible for feeding session data into Clickhouse
+  # snuba-sessions-consumer:
+  #   image: '$SNUBA_IMAGE'
+  #   environment:
+  #     - SNUBA_SETTINGS=docker
+  #     - CLICKHOUSE_HOST=clickhouse
+  #     - DEFAULT_BROKERS='kafka:9092'
+  #     - REDIS_HOST=redis
+  #     - UWSGI_MAX_REQUESTS='10000'
+  #     - UWSGI_DISABLE_LOGGING='true'
+  #   command: consumer --storage sessions_raw --auto-offset-reset=latest --max-batch-time-ms 750
+  # # Kafka consumer responsible for feeding transactions data into Clickhouse
+  # snuba-transactions-consumer:
+  #   image: '$SNUBA_IMAGE'
+  #   environment:
+  #     - SNUBA_SETTINGS=docker
+  #     - CLICKHOUSE_HOST=clickhouse
+  #     - DEFAULT_BROKERS='kafka:9092'
+  #     - REDIS_HOST=redis
+  #     - UWSGI_MAX_REQUESTS='10000'
+  #     - UWSGI_DISABLE_LOGGING='true'
+  #   command: consumer --storage transactions --consumer-group transactions_group --auto-offset-reset=latest --max-batch-time-ms 750
+  # snuba-replacer:
+  #   image: '$SNUBA_IMAGE'
+  #   environment:
+  #     - SNUBA_SETTINGS=docker
+  #     - CLICKHOUSE_HOST=clickhouse
+  #     - DEFAULT_BROKERS='kafka:9092'
+  #     - REDIS_HOST=redis
+  #     - UWSGI_MAX_REQUESTS='10000'
+  #     - UWSGI_DISABLE_LOGGING='true'
+  #   command: replacer --storage events --auto-offset-reset=latest --max-batch-size 3
+  # snuba-cleanup:
+  #   image: '$SNUBA_IMAGE'
+  #   environment:
+  #     - SNUBA_SETTINGS=docker
+  #     - CLICKHOUSE_HOST=clickhouse
+  #     - DEFAULT_BROKERS='kafka:9092'
+  #     - REDIS_HOST=redis
+  #     - UWSGI_MAX_REQUESTS='10000'
+  #     - UWSGI_DISABLE_LOGGING='true'
+  #     image: snuba-cleanup-onpremise-local
+  #   build:
+  #     context: ./cron
+  #     args:
+  #       BASE_IMAGE: '$SNUBA_IMAGE'
+  #   command: '"*/5 * * * * gosu snuba snuba cleanup --dry-run False"'
+  # symbolicator:
+  #   image: '$SYMBOLICATOR_IMAGE'
+  #   volumes:
+  #     - 'sentry-symbolicator:/data'
+  #     - type: bind
+  #       read_only: true
+  #       source: ./symbolicator
+  #       target: /etc/symbolicator
+  #   command: run -c /etc/symbolicator/config.yml
+  # symbolicator-cleanup:
+  #   image: symbolicator-cleanup-onpremise-local
+  #   build:
+  #     context: ./cron
+  #     args:
+  #       BASE_IMAGE: '$SYMBOLICATOR_IMAGE'
+  #   command: '"55 23 * * * gosu symbolicator symbolicator cleanup"'
+  #   volumes:
+  #     - 'sentry-symbolicator:/data'
+  # web:
+  #   build:
+  #     context: ./sentry
+  #     args:
+  #       - SENTRY_IMAGE
+  #       - SENTRY_PYTHON3
+  #   image: sentry-onpremise-local
+  #   environment:
+  #     SENTRY_CONF: '/etc/sentry'
+  #     SNUBA: 'http://snuba-api:1218'
+  #   volumes:
+  #     - 'sentry-data:/data'
+  #     - './sentry:/etc/sentry'
+  # cron:
+  #   build:
+  #     context: ./sentry
+  #     args:
+  #       - SENTRY_IMAGE
+  #       - SENTRY_PYTHON3
+  #   image: sentry-onpremise-local
+  #   environment:
+  #     SENTRY_CONF: '/etc/sentry'
+  #     SNUBA: 'http://snuba-api:1218'
+  #   volumes:
+  #     - 'sentry-data:/data'
+  #     - './sentry:/etc/sentry'
+  #   command: run cron
+  # worker:
+  #   build:
+  #     context: ./sentry
+  #     args:
+  #       - SENTRY_IMAGE
+  #       - SENTRY_PYTHON3
+  #   image: sentry-onpremise-local
+  #   environment:
+  #     SENTRY_CONF: '/etc/sentry'
+  #     SNUBA: 'http://snuba-api:1218'
+  #   volumes:
+  #     - 'sentry-data:/data'
+  #     - './sentry:/etc/sentry'
+  #   command: run worker
+  # ingest-consumer:
+  #   build:
+  #     context: ./sentry
+  #     args:
+  #       - SENTRY_IMAGE
+  #       - SENTRY_PYTHON3
+  #   image: sentry-onpremise-local
+  #   environment:
+  #     SENTRY_CONF: '/etc/sentry'
+  #     SNUBA: 'http://snuba-api:1218'
+  #   volumes:
+  #     - 'sentry-data:/data'
+  #     - './sentry:/etc/sentry'
+  #   command: run ingest-consumer --all-consumer-types
+  # post-process-forwarder:
+  #   build:
+  #     context: ./sentry
+  #     args:
+  #       - SENTRY_IMAGE
+  #       - SENTRY_PYTHON3
+  #   image: sentry-onpremise-local
+  #   environment:
+  #     SENTRY_CONF: '/etc/sentry'
+  #     SNUBA: 'http://snuba-api:1218'
+  #   volumes:
+  #     - 'sentry-data:/data'
+  #     - './sentry:/etc/sentry'
+  #   # Increase `--commit-batch-size 1` below to deal with high-load environments.
+  #   command: run post-process-forwarder --commit-batch-size 1
+  # sentry-cleanup:
+  #   environment:
+  #     SENTRY_CONF: '/etc/sentry'
+  #     SNUBA: 'http://snuba-api:1218'
+  #   volumes:
+  #     - 'sentry-data:/data'
+  #     - './sentry:/etc/sentry'
+  #   image: sentry-cleanup-onpremise-local
+  #   build:
+  #     context: ./cron
+  #     args:
+  #       BASE_IMAGE: 'sentry-onpremise-local'
+  #   command: '"0 0 * * * gosu sentry sentry cleanup --days $SENTRY_EVENT_RETENTION_DAYS"'
+  # nginx:
+  #   ports:
+  #     - '9000:80/tcp'
+  #   image: 'nginx:1.16'
+  #   volumes:
+  #     - type: bind
+  #       read_only: true
+  #       source: ./nginx
+  #       target: /etc/nginx
+  # relay:
+  #   image: '$RELAY_IMAGE'
+  #   volumes:
+  #     - type: bind
+  #       read_only: true
+  #       source: ./relay
+  #       target: /work/.relay
+     
